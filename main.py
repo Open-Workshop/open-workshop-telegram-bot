@@ -30,7 +30,7 @@ async def send_welcome(message):
 
 
 @bot.message_handler(commands=['project', 'проект'])
-async def send_welcome(message):
+async def project(message):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton(text='Репозиторий проекта', url='https://github.com/Miskler/pytorrent'))
     markup.add(telebot.types.InlineKeyboardButton(text='Telegram канал автора', url='https://t.me/sphere_games'))
@@ -40,6 +40,11 @@ async def send_welcome(message):
 
 @bot.message_handler(commands=['statistics', 'статистика'])
 async def statistics(message):
+    await bot.reply_to(message, """\
+    Этот функционал пока недоступен :)
+        """, parse_mode="Markdown")
+    return 
+
     # Произвольные данные
     x = [1, 2, 3, 4, 5]
     y = [10, 5, 12, 8, 3]
