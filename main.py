@@ -124,7 +124,7 @@ async def statistics(message):
         res = requests.get(url=SERVER_ADDRESS+"/statistics/info/all", timeout=10)
         info = json.loads(res.content)
         await bot.send_message(message.chat.id, f"""
-Пользователям отправлено {info.get('mods_sent_count')} модов.
+Пользователям отправлено {info.get('mods_sent_count')} файлов.
 Сервис работает {await tools.format_seconds(seconds=info.get('statistics_days', 0), word="день")}.
 
 У {info.get('games', 0)} игр сохранено {info.get('mods', 0)} модов, {info.get('mods_dependencies', 0)} из которых имеют зависимости на другие моды.
