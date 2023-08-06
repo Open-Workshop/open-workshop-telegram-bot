@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from urllib.parse import parse_qs
 from telebot.async_telebot import AsyncTeleBot
 
+SERVER_ADDRESS = 'https://43093.zetalink.ru:8000'
 
 with open('key.json', 'r') as file:
     # Загружаем содержимое файла в переменную
@@ -32,10 +33,11 @@ async def send_welcome(message):
 
 @bot.message_handler(commands=['project', 'проект'])
 async def project(message):
+    global SERVER_ADDRESS
     markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton(text='Репозиторий проекта', url='https://github.com/Miskler/pytorrent'))
+    markup.add(telebot.types.InlineKeyboardButton(text='GitHub проекта', url='https://github.com/Open-Workshop'))
     markup.add(telebot.types.InlineKeyboardButton(text='Telegram канал автора', url='https://t.me/sphere_games'))
-    markup.add(telebot.types.InlineKeyboardButton(text='API бота', url='https://43093.zetalink.ru:8000/docs'))
+    markup.add(telebot.types.InlineKeyboardButton(text='API бота', url=SERVER_ADDRESS+'/docs'))
     await bot.send_message(message.chat.id, 'Это бесплатный **open-source** проект с **открытым API**! 😍', parse_mode="Markdown", reply_markup=markup)
 
 
@@ -47,7 +49,7 @@ async def statistics(message):
 
     try:
         if not type_map:
-            res = requests.get(url="https://43093.zetalink.ru:8000/statistics/info/type_map", headers={"Accept-Language": "ru, en"}, timeout=10)
+            res = requests.get(url=SERVER_ADDRESS+"/statistics/info/type_map", headers={"Accept-Language": "ru, en"}, timeout=10)
             info = json.loads(res.content)
             type_map = info["result"]
     except:
@@ -55,7 +57,7 @@ async def statistics(message):
 
     try:
         # Произвольные данные
-        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/hour", timeout=10)
+        res = requests.get(url=SERVER_ADDRESS+"/statistics/hour", timeout=10)
         info = json.loads(res.content)
 
         output = await tools.graf(info, "date_time")
@@ -83,7 +85,7 @@ async def statistics(message):
     try:
         plt.clf()
         # Произвольные данные
-        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/day", timeout=10)
+        res = requests.get(url=SERVER_ADDRESS+"/statistics/day", timeout=10)
         info = json.loads(res.content)
 
         output = await tools.graf(info, "date")
@@ -119,7 +121,7 @@ async def statistics(message):
         await bot.send_message(message.chat.id, "При получении статистики за 7 дней возникла странная ошибка...")
 
     try:
-        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/info/all", timeout=10)
+        res = requests.get(url=SERVER_ADDRESS+"/statistics/info/all", timeout=10)
         info = json.loads(res.content)
         await bot.send_message(message.chat.id, f"""
 Пользователяем отправлено {info.get('mods_sent_count')} модов.
@@ -153,7 +155,7 @@ async def echo_message(message):
                 await bot.reply_to(message, "Я даже без проверки знаю, что такого мода нету :)")
             else:
                 try:
-                    data = requests.get(url=f"https://43093.zetalink.ru:8000/info/mod/{str(mes)}",
+                    data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
                                         timeout=10)
 
                     # Если больше 30 мб (получаю от сервера в байтах, а значит и сраниваю в них)
@@ -161,7 +163,7 @@ async def echo_message(message):
                     if info["result"] is not None and info["result"].get("size", 0) > 31457280:
                         markup = telebot.types.InlineKeyboardMarkup()
                         markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
-                                                                      url=f'https://43093.zetalink.ru:8000/download/{mes}'))
+                                                                      url=SERVER_ADDRESS+f'/download/{mes}'))
                         await bot.send_message(message.chat.id,
                                                f"Ого! `{info['result'].get('name', str(mes))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
                                                parse_mode="Markdown", reply_markup=markup)
@@ -171,7 +173,7 @@ async def echo_message(message):
                     return -1
 
                 try:
-                    result = requests.get(url=f"https://43093.zetalink.ru:8000/download/steam/{str(mes)}", timeout=5)
+                    result = requests.get(url=SERVER_ADDRESS+f"/download/steam/{str(mes)}", timeout=5)
                 except:
                     await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=1)_", parse_mode="Markdown")
                     return -1
@@ -192,7 +194,7 @@ async def echo_message(message):
                         for i in range(60):
                             time.sleep(1)
                             try:
-                                res = requests.get(url=f"https://43093.zetalink.ru:8000/condition/mod/%5B{str(mes)}%5D",
+                                res = requests.get(url=SERVER_ADDRESS+f"/condition/mod/%5B{str(mes)}%5D",
                                                         timeout=10)
                             except:
                                 await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=2)_", parse_mode="Markdown")
@@ -204,7 +206,7 @@ async def echo_message(message):
                                     return -1
                                 elif data[str(mes)] <= 1:
                                     try:
-                                        data = requests.get(url=f"https://43093.zetalink.ru:8000/info/mod/{str(mes)}",
+                                        data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
                                                             timeout=10)
 
                                         # Если больше 30 мб (получаю от сервера в байтах, а значит и сраниваю в них)
@@ -212,7 +214,7 @@ async def echo_message(message):
                                         if info["result"] is not None and info["result"].get("size", 0) > 31457280:
                                             markup = telebot.types.InlineKeyboardMarkup()
                                             markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
-                                                                                          url=f'https://43093.zetalink.ru:8000/download/{mes}'))
+                                                                                          url=SERVER_ADDRESS+f'/download/{mes}'))
                                             await bot.send_message(message.chat.id,
                                                                    f"Ого! `{info['result'].get('name', str(mes))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
                                                                    parse_mode="Markdown", reply_markup=markup)
@@ -224,7 +226,7 @@ async def echo_message(message):
 
                                     try:
                                         result = requests.get(
-                                            url=f"https://43093.zetalink.ru:8000/download/{str(mes)}", timeout=10)
+                                            url=SERVER_ADDRESS+f"/download/{str(mes)}", timeout=10)
                                     except:
                                         await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=3)_", parse_mode="Markdown")
                                         return -1
