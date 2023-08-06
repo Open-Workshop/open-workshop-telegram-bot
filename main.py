@@ -1,14 +1,15 @@
+import io
 import json
 import time
 import tools
 import telebot
 import requests
+from datetime import timedelta
+import matplotlib.pyplot as plt
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
 from telebot.async_telebot import AsyncTeleBot
 
-import matplotlib.pyplot as plt
-import io
 
 with open('key.json', 'r') as file:
     # Загружаем содержимое файла в переменную
@@ -38,34 +39,97 @@ async def project(message):
     await bot.send_message(message.chat.id, 'Это бесплатный **open-source** проект с **открытым API**! 😍', parse_mode="Markdown", reply_markup=markup)
 
 
+type_map = None
 @bot.message_handler(commands=['statistics', 'статистика'])
 async def statistics(message):
-    await bot.reply_to(message, """\
-    Этот функционал пока недоступен :)
-        """, parse_mode="Markdown")
-    return 
+    plt.clf()
+    global type_map
 
-    # Произвольные данные
-    x = [1, 2, 3, 4, 5]
-    y = [10, 5, 12, 8, 3]
+    try:
+        if not type_map:
+            res = requests.get(url="https://43093.zetalink.ru:8000/statistics/info/type_map", headers={"Accept-Language": "ru, en"}, timeout=10)
+            info = json.loads(res.content)
+            type_map = info["result"]
+    except:
+        await bot.send_message(message.chat.id, "При получении переводов возникла странная ошибка...")
 
-    # Создание графика
-    plt.plot(x, y)
+    try:
+        # Произвольные данные
+        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/hour", timeout=10)
+        info = json.loads(res.content)
 
-    # Настройка внешнего вида графика
-    plt.title("Пример графика")
-    plt.xlabel("Ось X")
-    plt.ylabel("Ось Y")
+        output = await tools.graf(info, "date_time")
+        for i in output[0].keys():
+            plt.plot(output[0][i][0], output[0][i][1], label=type_map.get(i, "ERROR"))
 
-    # Создание объекта для сохранения изображения в памяти
-    buffer = io.BytesIO()
+        # Настройка внешнего вида графика
+        plt.title("Статистика сегодня")
+        plt.xlabel("Час")
+        plt.ylabel("Кол-во обращений")
+        plt.legend(fontsize='xx-small')
+        # Задаем метки делений на оси x
+        plt.xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23])
+        # Создание объекта для сохранения изображения в памяти
+        buffer = io.BytesIO()
+        # Сохранение графика в буфер
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
 
-    # Сохранение графика в буфер
-    plt.savefig(buffer, format='png')
-    buffer.seek(0)
+        # Отправка изображения через Telegram Bot API
+        await bot.send_photo(chat_id=message.chat.id, photo=buffer)
+    except:
+        await bot.send_message(message.chat.id, "При получении статистики за день возникла странная ошибка...")
 
-    # Отправка изображения через Telegram Bot API
-    await bot.send_photo(chat_id=message.chat.id, photo=buffer)
+    try:
+        plt.clf()
+        # Произвольные данные
+        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/day", timeout=10)
+        info = json.loads(res.content)
+
+        output = await tools.graf(info, "date")
+
+        shift = output[1][0].toordinal()
+        for i in output[0].keys():
+            plt.plot([x - shift for x in output[0][i][0]], output[0][i][1], label=type_map.get(i, "ERROR"))
+
+
+        # Настройка внешнего вида графика
+        plt.title("Статистика за 7 дней")
+        plt.xlabel("День")
+        plt.ylabel("Кол-во обращений")
+        plt.legend(fontsize='xx-small')
+        # Задаем метки делений на оси x
+        start_value = 0
+        end_value = len(output[1])-1
+        step = 1
+
+        numbers = list(range(start_value, end_value + 1, step))
+        dates = [str(output[1][-1] - timedelta(days=end_value- i)).removesuffix(" 00:00:00").removeprefix("20") for i in range(start_value, end_value + 1, step)]
+
+        plt.xticks(numbers, dates)
+        # Создание объекта для сохранения изображения в памяти
+        buffer = io.BytesIO()
+        # Сохранение графика в буфер
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+
+        # Отправка изображения через Telegram Bot API
+        await bot.send_photo(chat_id=message.chat.id, photo=buffer)
+    except:
+        await bot.send_message(message.chat.id, "При получении статистики за 7 дней возникла странная ошибка...")
+
+    try:
+        res = requests.get(url="https://43093.zetalink.ru:8000/statistics/info/all", timeout=10)
+        info = json.loads(res.content)
+        await bot.send_message(message.chat.id, f"""
+Пользователяем отправлено {info.get('mods_sent_count')} модов.
+Сервис работает {await tools.format_seconds(seconds=info.get('statistics_days', 0), word="день")}.
+
+У {info.get('games', 0)} игр сохранено {info.get('mods', 0)} модов, {info.get('mods_dependencies', 0)} из которых имеют зависимости на другие моды.
+Сервису известно об {await tools.format_seconds(seconds=info.get('genres', 0), word="жанр")} игр и {await tools.format_seconds(seconds=info.get('mods_tags', 0), word="тег")} для модов.
+        """)
+    except:
+        await bot.send_message(message.chat.id, "При получении общей статистики возникла странная ошибка...")
 
 
 # Handle all other messages with content_type 'text' (content_types defaults to ['text'])
@@ -76,8 +140,7 @@ async def echo_message(message):
         mes = message.text
 
         if mes.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or mes.startswith("https://steamcommunity.com/workshop/filedetails/"):
-            parsed = urlparse(mes,
-                         "highlight=params#url-parsing")
+            parsed = urlparse(mes, "highlight=params#url-parsing")
             captured_value = parse_qs(parsed.query)
             try:
                 mes = captured_value['id'][0]
