@@ -124,7 +124,7 @@ async def statistics(message):
         res = requests.get(url=SERVER_ADDRESS+"/statistics/info/all", timeout=10)
         info = json.loads(res.content)
         await bot.send_message(message.chat.id, f"""
-Пользователяем отправлено {info.get('mods_sent_count')} модов.
+Пользователям отправлено {info.get('mods_sent_count')} модов.
 Сервис работает {await tools.format_seconds(seconds=info.get('statistics_days', 0), word="день")}.
 
 У {info.get('games', 0)} игр сохранено {info.get('mods', 0)} модов, {info.get('mods_dependencies', 0)} из которых имеют зависимости на другие моды.
@@ -158,7 +158,7 @@ async def echo_message(message):
                     data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
                                         timeout=10)
 
-                    # Если больше 30 мб (получаю от сервера в байтах, а значит и сраниваю в них)
+                    # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
                     info = json.loads(data.content)
                     if info["result"] is not None and info["result"].get("size", 0) > 31457280:
                         markup = telebot.types.InlineKeyboardMarkup()
@@ -209,7 +209,7 @@ async def echo_message(message):
                                         data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
                                                             timeout=10)
 
-                                        # Если больше 30 мб (получаю от сервера в байтах, а значит и сраниваю в них)
+                                        # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
                                         info = json.loads(data.content)
                                         if info["result"] is not None and info["result"].get("size", 0) > 31457280:
                                             markup = telebot.types.InlineKeyboardMarkup()
@@ -256,7 +256,8 @@ async def echo_message(message):
                     elif data["error_id"] == 2:
                         await bot.reply_to(message, "Сервер говорит что такого мода не существует 😢")
                     else:
-                        await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=2)_", parse_mode="Markdown")
+                        await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=2)_",
+                                           parse_mode="Markdown")
                 else:
                     await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=3)_", parse_mode="Markdown")
         else:
@@ -265,9 +266,11 @@ async def echo_message(message):
             elif mes.startswith("https://") or mes.startswith("http://"):
                 await bot.reply_to(message, "Пока что я умею скачивать только со Steam 😿")
             else:
-                await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!", parse_mode="Markdown")
+                await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!",
+                                   parse_mode="Markdown")
     except:
-        await bot.reply_to(message, "Ты вызвал странную ошибку...\nПопробуй загрузить мод еще раз!", parse_mode="Markdown")
+        await bot.reply_to(message, "Ты вызвал странную ошибку...\nПопробуй загрузить мод еще раз!",
+                           parse_mode="Markdown")
 
 import asyncio
 asyncio.run(bot.polling())
