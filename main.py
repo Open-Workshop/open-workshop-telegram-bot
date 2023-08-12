@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from urllib.parse import parse_qs
 from telebot.async_telebot import AsyncTeleBot
 
-SERVER_ADDRESS = 'https://43093.zetalink.ru:8000'
+SERVER_ADDRESS = 'https://43093.zetalink.ru'
 
 with open('key.json', 'r') as file:
     # Загружаем содержимое файла в переменную
