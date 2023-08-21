@@ -10,7 +10,8 @@ from urllib.parse import urlparse
 from urllib.parse import parse_qs
 from telebot.async_telebot import AsyncTeleBot
 
-SERVER_ADDRESS = 'https://43093.zetalink.ru'
+SERVER_ADDRESS = 'https://api.openworkshop.su'
+WEBSITE_ADDRESS = 'https://openworkshop.su'
 
 with open('key.json', 'r') as file:
     # Загружаем содержимое файла в переменную
@@ -18,7 +19,7 @@ with open('key.json', 'r') as file:
 
 bot = AsyncTeleBot(API_TOKEN)
 
-# Handle '/start' and '/help'
+
 @bot.message_handler(commands=['help', 'start', "старт", "помощь"])
 async def send_welcome(message):
     await bot.reply_to(message, """\
@@ -34,15 +35,21 @@ async def send_welcome(message):
 @bot.message_handler(commands=['project', 'проект'])
 async def project(message):
     global SERVER_ADDRESS
+
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton(text='GitHub проекта', url='https://github.com/Open-Workshop'))
     markup.add(telebot.types.InlineKeyboardButton(text='Telegram канал автора', url='https://t.me/sphere_games'))
     markup.add(telebot.types.InlineKeyboardButton(text='Такой же бот в Discord', url='https://discord.com/api/oauth2/authorize?client_id=1137841106852253818&permissions=2148038720&scope=bot%20applications.commands'))
     markup.add(telebot.types.InlineKeyboardButton(text='API бота', url=SERVER_ADDRESS+'/docs'))
+    markup.add(telebot.types.InlineKeyboardButton(text='Сайт', url=WEBSITE_ADDRESS))
+
     await bot.send_message(message.chat.id, 'Это бесплатный **open-source** проект с **открытым API**! 😍', parse_mode="Markdown", reply_markup=markup)
 
 
 type_map = None
+
+#TODO разделить команду на 2 части (общая статистика, графики)
+#TODO сделать асинхронным
 @bot.message_handler(commands=['statistics', 'статистика'])
 async def statistics(message):
     plt.clf()
@@ -135,7 +142,7 @@ async def statistics(message):
         await bot.send_message(message.chat.id, "При получении общей статистики возникла странная ошибка...")
 
 
-# Handle all other messages with content_type 'text' (content_types defaults to ['text'])
+#TODO сделать асинхронным
 @bot.message_handler(func=lambda message: True)
 async def echo_message(message):
     try:
