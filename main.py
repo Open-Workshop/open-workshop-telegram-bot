@@ -3,6 +3,7 @@ import json
 import time
 import tools
 import telebot
+import aiohttp
 import requests
 from datetime import timedelta
 import matplotlib.pyplot as plt
@@ -46,11 +47,31 @@ async def project(message):
     await bot.send_message(message.chat.id, 'Это бесплатный **open-source** проект с **открытым API**! 😍', parse_mode="Markdown", reply_markup=markup)
 
 
+@bot.message_handler(commands=['statistics', 'статистика'])
+async def statistics(message):
+    global SERVER_ADDRESS
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.get(url=SERVER_ADDRESS + "/statistics/info/all", timeout=10)
+
+            text = await response.text()
+            info = json.loads(text)
+
+            await bot.send_message(message.chat.id, f"""
+Пользователям отправлено {info.get('mods_sent_count')} файлов.
+Сервис работает {await tools.format_seconds(seconds=info.get('statistics_days', 0), word="день")}.
+
+У {info.get('games', 0)} игр сохранено {info.get('mods', 0)} модов, {info.get('mods_dependencies', 0)} из которых имеют зависимости на другие моды.
+Сервису известно об {await tools.format_seconds(seconds=info.get('genres', 0), word="жанр")} игр и {await tools.format_seconds(seconds=info.get('mods_tags', 0), word="тег")} для модов.
+                """)
+    except asyncio.TimeoutError:
+        await bot.send_message("Превышено время ожидания при получении общей статистики.")
+
+
 type_map = None
 
-#TODO разделить команду на 2 части (общая статистика, графики)
 #TODO сделать асинхронным
-@bot.message_handler(commands=['statistics', 'статистика'])
+@bot.message_handler(commands=['graph', 'график'])
 async def statistics(message):
     plt.clf()
     global type_map
@@ -104,17 +125,18 @@ async def statistics(message):
 
 
         # Настройка внешнего вида графика
-        plt.title("Статистика за 7 дней")
         plt.xlabel("День")
         plt.ylabel("Кол-во обращений")
         plt.legend(fontsize='xx-small')
         # Задаем метки делений на оси x
         start_value = 0
-        end_value = len(output[1])-1
+        end_value = len(output[1])
+        plt.title(f"Статистика за {end_value} последних дней")
         step = 1
 
-        numbers = list(range(start_value, end_value + 1, step))
-        dates = [str(output[1][-1] - timedelta(days=end_value- i)).removesuffix(" 00:00:00").removeprefix("20") for i in range(start_value, end_value + 1, step)]
+        numbers = list(range(start_value, end_value, step))
+        dates = [str(output[1][-1] - timedelta(days=(end_value - 1) - i)).removesuffix(" 00:00:00").removeprefix("20")
+                 for i in range(start_value, end_value, step)]
 
         plt.xticks(numbers, dates)
         # Создание объекта для сохранения изображения в памяти
@@ -127,19 +149,6 @@ async def statistics(message):
         await bot.send_photo(chat_id=message.chat.id, photo=buffer)
     except:
         await bot.send_message(message.chat.id, "При получении статистики за 7 дней возникла странная ошибка...")
-
-    try:
-        res = requests.get(url=SERVER_ADDRESS+"/statistics/info/all", timeout=10)
-        info = json.loads(res.content)
-        await bot.send_message(message.chat.id, f"""
-Пользователям отправлено {info.get('mods_sent_count')} файлов.
-Сервис работает {await tools.format_seconds(seconds=info.get('statistics_days', 0), word="день")}.
-
-У {info.get('games', 0)} игр сохранено {info.get('mods', 0)} модов, {info.get('mods_dependencies', 0)} из которых имеют зависимости на другие моды.
-Сервису известно об {await tools.format_seconds(seconds=info.get('genres', 0), word="жанр")} игр и {await tools.format_seconds(seconds=info.get('mods_tags', 0), word="тег")} для модов.
-        """)
-    except:
-        await bot.send_message(message.chat.id, "При получении общей статистики возникла странная ошибка...")
 
 
 #TODO сделать асинхронным
