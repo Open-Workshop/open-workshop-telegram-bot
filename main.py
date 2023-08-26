@@ -4,6 +4,7 @@ import time
 import tools
 import telebot
 import aiohttp
+import asyncio
 import requests
 from datetime import timedelta
 import matplotlib.pyplot as plt
@@ -157,118 +158,148 @@ async def graph(message):
         await bot.send_message(message.chat.id, "При получении статистики за 7 дней возникла странная ошибка...")
 
 
-#TODO сделать асинхронным
 @bot.message_handler(func=lambda message: True)
 async def echo_message(message):
+    global SERVER_ADDRESS
+
     try:
         start_time = time.time()
-        mes = message.text
 
-        if mes.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or mes.startswith("https://steamcommunity.com/workshop/filedetails/"):
-            parsed = urlparse(mes, "highlight=params#url-parsing")
-            captured_value = parse_qs(parsed.query)
-            try:
-                mes = captured_value['id'][0]
-            except:
-                await bot.reply_to(message, "Ты мне какую-то не правильную ссылку скинул! 🧐")
+        link = await tools.pars_link(link=message.text)
+        if link is bool:
+            await bot.reply_to(message, "Ты мне какую-то не правильную ссылку скинул! 🧐")
+            return
 
-        if mes.isdigit():
-            mes = int(mes)
-            if mes <= 0:
+        if link.isdigit():
+            link = int(link)
+            if link <= 0:
                 await bot.reply_to(message, "Я даже без проверки знаю, что такого мода нету :)")
             else:
                 try:
-                    data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
-                                        timeout=10)
+                    async with aiohttp.ClientSession() as session:
+                        response = await session.get(url=SERVER_ADDRESS + f"/info/mod/{str(link)}", timeout=10)
+                        data = await response.text()
 
-                    # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
-                    info = json.loads(data.content)
-                    if info["result"] is not None and info["result"].get("size", 0) > 31457280:
-                        markup = telebot.types.InlineKeyboardMarkup()
-                        markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
-                                                                      url=SERVER_ADDRESS+f'/download/{mes}'))
-                        await bot.send_message(message.chat.id,
-                                               f"Ого! `{info['result'].get('name', str(mes))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
-                                               parse_mode="Markdown", reply_markup=markup)
-                        return
+                        # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
+                        info = json.loads(data)
+                        if info["result"] is not None and info["result"].get("size", 0) > 31457280:
+                            markup = telebot.types.InlineKeyboardMarkup()
+                            markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
+                                                                          url=SERVER_ADDRESS+f'/download/{link}'))
+                            await bot.send_message(message.chat.id,
+                                                   f"Ого! `{info['result'].get('name', str(link))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
+                                                   parse_mode="Markdown", reply_markup=markup)
+                            return
                 except:
-                    await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=4)_", parse_mode="Markdown")
+                    await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=2)_",
+                                       parse_mode="Markdown")
                     return -1
 
                 try:
-                    result = requests.get(url=SERVER_ADDRESS+f"/download/steam/{str(mes)}", timeout=5)
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url=SERVER_ADDRESS + f"/download/steam/{str(link)}",
+                                               timeout=20) as response:
+                            if response.headers.get('content-type') == "application/zip":
+                                file_content = await response.read()
+                                file_name = await tools.get_name(
+                                    response.headers.get("content-disposition", "ERROR.zip"))
+                                print(f"File name: {file_name}")
+                                file = io.BytesIO(file_content)
+
+                                await bot.send_document(
+                                    message.chat.id,
+                                    visible_file_name=await tools.get_name(file_name),
+                                    document=file,
+                                    reply_to_message_id=message.id,
+                                    timeout=10)
+                                await bot.reply_to(message,
+                                                   f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}")
+                                return
+                            else:
+                                result = await response.read()
+                                header_result = response.headers
                 except:
-                    await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=1)_", parse_mode="Markdown")
+                    print("ERROR")
+                    await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=3)_", parse_mode="Markdown")
                     return -1
 
-                if result.headers.get('content-type') == "application/zip":
-                    await bot.send_document(
-                        message.chat.id,
-                        visible_file_name=await tools.get_name(result.headers["content-disposition"]),
-                        document=result.content,
-                        reply_to_message_id=message.id,
-                        timeout=10)
-                    await bot.reply_to(message, f"Ваш запрос занял {await tools.format_seconds(round(time.time()-start_time, 1))}")
-                elif result.headers.get('content-type') == "application/json":
-                    data = json.loads(result.content)
+                if header_result.get('content-type') == "application/json":
+                    data = json.loads(result.decode())
                     if data["error_id"] == 0 or data["error_id"] == 3:
-                        await bot.reply_to(message, "На сервере нету этого мода, но он сейчас его загрузит! _(это может занять некоторое время)_", parse_mode="Markdown")
+                        await bot.reply_to(message,
+                            "На сервере нету этого мода, но он сейчас его загрузит! _(это может занять некоторое время)_",
+                            parse_mode="Markdown")
 
                         for i in range(60):
-                            time.sleep(1)
+                            await asyncio.sleep(1)
                             try:
-                                res = requests.get(url=SERVER_ADDRESS+f"/condition/mod/%5B{str(mes)}%5D",
-                                                        timeout=10)
+                                async with aiohttp.ClientSession() as session:
+                                    response = await session.get(
+                                        url=SERVER_ADDRESS + f"/condition/mod/%5B{str(link)}%5D",
+                                        timeout=10)
+                                    res = await response.read()
+                                    header_result = response.headers
                             except:
-                                await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=2)_", parse_mode="Markdown")
+                                await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=5)_",
+                                                   parse_mode="Markdown")
                                 return -1
-                            if res.headers.get('content-type') == "application/json":
-                                data = json.loads(res.content)
-                                if data.get(str(mes), None) == None:
+                            if header_result.get('content-type') == "application/json":
+                                data = json.loads(res.decode())
+                                if data.get(str(link), None) == None:
                                     await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢")
                                     return -1
-                                elif data[str(mes)] <= 1:
+                                elif data[str(link)] <= 1:
                                     try:
-                                        data = requests.get(url=SERVER_ADDRESS+f"/info/mod/{str(mes)}",
-                                                            timeout=10)
+                                        async with aiohttp.ClientSession() as session:
+                                            response = await session.get(url=SERVER_ADDRESS + f"/info/mod/{str(link)}",
+                                                                         timeout=10)
+                                            data = await response.text()
 
-                                        # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
-                                        info = json.loads(data.content)
-                                        if info["result"] is not None and info["result"].get("size", 0) > 31457280:
-                                            markup = telebot.types.InlineKeyboardMarkup()
-                                            markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
-                                                                                          url=SERVER_ADDRESS+f'/download/{mes}'))
-                                            await bot.send_message(message.chat.id,
-                                                                   f"Ого! `{info['result'].get('name', str(mes))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
-                                                                   parse_mode="Markdown", reply_markup=markup)
-                                            return
+                                            # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
+                                            info = json.loads(data)
+                                            if info["result"] is not None and info["result"].get("size", 0) > 31457280:
+                                                markup = telebot.types.InlineKeyboardMarkup()
+                                                markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
+                                                                                              url=SERVER_ADDRESS+f'/download/{link}'))
+                                                await bot.send_message(message.chat.id,
+                                                                       f"Ого! `{info['result'].get('name', str(link))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
+                                                                       parse_mode="Markdown", reply_markup=markup)
+                                                return
                                     except:
                                         await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=4)_",
                                                            parse_mode="Markdown")
                                         return -1
 
                                     try:
-                                        result = requests.get(
-                                            url=SERVER_ADDRESS+f"/download/{str(mes)}", timeout=10)
-                                    except:
-                                        await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=3)_", parse_mode="Markdown")
-                                        return -1
+                                        async with aiohttp.ClientSession() as session:
+                                            async with session.get(url=SERVER_ADDRESS + f"/download/{str(link)}",
+                                                                   timeout=20) as response:
+                                                if response.headers.get('content-type') == "application/zip":
+                                                    file_content = await response.read()
+                                                    file_name = await tools.get_name(
+                                                        response.headers.get("content-disposition", "ERROR.zip"))
+                                                    print(f"File name: {file_name}")
+                                                    file = io.BytesIO(file_content)
 
-                                    if result.headers.get('content-type') == "application/zip":
-                                        await bot.send_document(
-                                            message.chat.id,
-                                            visible_file_name=await tools.get_name(result.headers["content-disposition"]),
-                                            document=result.content,
-                                            reply_to_message_id=message.id,
-                                            timeout=10)
-                                        await bot.reply_to(message, f"Ваш запрос занял {await tools.format_seconds(round(time.time()-start_time, 1))}")
-                                    else:
-                                        await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=4)_",
+                                                    await bot.send_document(
+                                                        message.chat.id,
+                                                        visible_file_name=await tools.get_name(file_name),
+                                                        document=file,
+                                                        reply_to_message_id=message.id,
+                                                        timeout=10)
+                                                    await bot.reply_to(message,
+                                                                       f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}")
+                                                    return
+                                                else:
+                                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢")
+                                    except:
+                                        await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=1)_",
                                                            parse_mode="Markdown")
 
                                     return
                             else:
-                                await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=1)_", parse_mode="Markdown")
+                                await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=1)_",
+                                                   parse_mode="Markdown")
                                 return
                         await bot.reply_to(message, "Превышено время ожидания ответа с сервера!")
                         return -1
@@ -279,21 +310,19 @@ async def echo_message(message):
                     elif data["error_id"] == 2:
                         await bot.reply_to(message, "Сервер говорит что такого мода не существует 😢")
                     else:
-                        await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=2)_",
-                                           parse_mode="Markdown")
+                        await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=2)_", parse_mode="Markdown")
                 else:
                     await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=3)_", parse_mode="Markdown")
         else:
-            if mes.startswith("https://steamcommunity.com") or mes.startswith("https://store.steampowered.com"):
+            if link is str and (
+                    link.startswith("https://steamcommunity.com") or link.startswith("https://store.steampowered.com")):
                 await bot.reply_to(message, "Мне нужна ссылка конкретно на мод! _(или его ID)_", parse_mode="Markdown")
-            elif mes.startswith("https://") or mes.startswith("http://"):
+            elif link is str and (link.startswith("https://") or link.startswith("http://")):
                 await bot.reply_to(message, "Пока что я умею скачивать только со Steam 😿")
             else:
-                await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!",
-                                   parse_mode="Markdown")
+                await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!", parse_mode="Markdown")
     except:
-        await bot.reply_to(message, "Ты вызвал странную ошибку...\nПопробуй загрузить мод еще раз!",
-                           parse_mode="Markdown")
+        await bot.reply_to(message, "Ты вызвал странную ошибку...\nПопробуй загрузить мод еще раз!")
 
-import asyncio
+
 asyncio.run(bot.polling())

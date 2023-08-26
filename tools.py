@@ -1,5 +1,7 @@
 import pymorphy2
 import email.utils
+from urllib.parse import urlparse
+from urllib.parse import parse_qs
 from datetime import datetime
 
 
@@ -14,6 +16,7 @@ graphs_ignore = [
     "/download/steam/",
     "mod_not_found_local",
     "/condition/mod/",
+    "/update/steam/",
     "/list/tags/"
     "/list/mods/",
     "/download/",
@@ -21,6 +24,16 @@ graphs_ignore = [
     "/"
 ]
 
+async def pars_link(link):
+    if link.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or link.startswith(
+                       "https://steamcommunity.com/workshop/filedetails/"):
+        parsed = urlparse(link, "highlight=params#url-parsing")
+        captured_value = parse_qs(parsed.query)
+        try:
+            link = captured_value['id'][0]
+        except:
+            link = False
+    return link
 
 async def format_seconds(seconds, word: str = 'секунда') -> str:
     try:
