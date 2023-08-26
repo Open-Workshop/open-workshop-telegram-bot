@@ -70,83 +70,89 @@ async def statistics(message):
 
 type_map = None
 
-#TODO сделать асинхронным
 @bot.message_handler(commands=['graph', 'график'])
-async def statistics(message):
+async def graph(message):
     plt.clf()
     global type_map
 
     try:
         if not type_map:
-            res = requests.get(url=SERVER_ADDRESS+"/statistics/info/type_map", headers={"Accept-Language": "ru, en"}, timeout=10)
-            info = json.loads(res.content)
-            type_map = info["result"]
+            async with aiohttp.ClientSession() as session:
+                resource = await session.get(url=SERVER_ADDRESS+"/statistics/info/type_map", headers={"Accept-Language": "ru, en"}, timeout=10)
+
+                content = await resource.text()
+
+                info = json.loads(content)
+                type_map = info["result"]
     except:
         await bot.send_message(message.chat.id, "При получении переводов возникла странная ошибка...")
 
     try:
-        # Произвольные данные
-        res = requests.get(url=SERVER_ADDRESS+"/statistics/hour", timeout=10)
-        info = json.loads(res.content)
+        async with aiohttp.ClientSession() as session:
+            resource = await session.get(url=SERVER_ADDRESS+"/statistics/hour", timeout=10)
+            content = await resource.text()
+            info = json.loads(content)
 
-        output = await tools.graf(info, "date_time")
-        for i in output[0].keys():
-            plt.plot(output[0][i][0], output[0][i][1], label=type_map.get(i, "ERROR"))
+            output = await tools.graf(info, "date_time")
+            for i in output[0].keys():
+                plt.plot(output[0][i][0], output[0][i][1], label=type_map.get(i, "ERROR"))
 
-        # Настройка внешнего вида графика
-        plt.title("Статистика сегодня")
-        plt.xlabel("Час")
-        plt.ylabel("Кол-во обращений")
-        plt.legend(fontsize='xx-small')
-        # Задаем метки делений на оси x
-        plt.xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23])
-        # Создание объекта для сохранения изображения в памяти
-        buffer = io.BytesIO()
-        # Сохранение графика в буфер
-        plt.savefig(buffer, format='png')
-        buffer.seek(0)
+            # Настройка внешнего вида графика
+            plt.title("Статистика сегодня")
+            plt.xlabel("Час")
+            plt.ylabel("Кол-во обращений")
+            plt.legend(fontsize='xx-small')
+            # Задаем метки делений на оси x
+            plt.xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23])
+            # Создание объекта для сохранения изображения в памяти
+            buffer = io.BytesIO()
+            # Сохранение графика в буфер
+            plt.savefig(buffer, format='png')
+            buffer.seek(0)
 
-        # Отправка изображения через Telegram Bot API
-        await bot.send_photo(chat_id=message.chat.id, photo=buffer)
+            # Отправка изображения через Telegram Bot API
+            await bot.send_photo(chat_id=message.chat.id, photo=buffer)
     except:
         await bot.send_message(message.chat.id, "При получении статистики за день возникла странная ошибка...")
 
     try:
-        plt.clf()
-        # Произвольные данные
-        res = requests.get(url=SERVER_ADDRESS+"/statistics/day", timeout=10)
-        info = json.loads(res.content)
+        async with aiohttp.ClientSession() as session:
+            plt.clf()
 
-        output = await tools.graf(info, "date")
+            resource = await session.get(url=SERVER_ADDRESS+"/statistics/day", timeout=10)
+            content = await resource.text()
+            info = json.loads(content)
 
-        shift = output[1][0].toordinal()
-        for i in output[0].keys():
-            plt.plot([x - shift for x in output[0][i][0]], output[0][i][1], label=type_map.get(i, "ERROR"))
+            output = await tools.graf(info, "date")
+
+            shift = output[1][0].toordinal()
+            for i in output[0].keys():
+                plt.plot([x - shift for x in output[0][i][0]], output[0][i][1], label=type_map.get(i, "ERROR"))
 
 
-        # Настройка внешнего вида графика
-        plt.xlabel("День")
-        plt.ylabel("Кол-во обращений")
-        plt.legend(fontsize='xx-small')
-        # Задаем метки делений на оси x
-        start_value = 0
-        end_value = len(output[1])
-        plt.title(f"Статистика за {end_value} последних дней")
-        step = 1
+            # Настройка внешнего вида графика
+            plt.xlabel("День")
+            plt.ylabel("Кол-во обращений")
+            plt.legend(fontsize='xx-small')
+            # Задаем метки делений на оси x
+            start_value = 0
+            end_value = len(output[1])
+            plt.title(f"Статистика за {end_value} последних дней")
+            step = 1
 
-        numbers = list(range(start_value, end_value, step))
-        dates = [str(output[1][-1] - timedelta(days=(end_value - 1) - i)).removesuffix(" 00:00:00").removeprefix("20")
-                 for i in range(start_value, end_value, step)]
+            numbers = list(range(start_value, end_value, step))
+            dates = [str(output[1][-1] - timedelta(days=(end_value - 1) - i)).removesuffix(" 00:00:00").removeprefix("20")
+                     for i in range(start_value, end_value, step)]
 
-        plt.xticks(numbers, dates)
-        # Создание объекта для сохранения изображения в памяти
-        buffer = io.BytesIO()
-        # Сохранение графика в буфер
-        plt.savefig(buffer, format='png')
-        buffer.seek(0)
+            plt.xticks(numbers, dates)
+            # Создание объекта для сохранения изображения в памяти
+            buffer = io.BytesIO()
+            # Сохранение графика в буфер
+            plt.savefig(buffer, format='png')
+            buffer.seek(0)
 
-        # Отправка изображения через Telegram Bot API
-        await bot.send_photo(chat_id=message.chat.id, photo=buffer)
+            # Отправка изображения через Telegram Bot API
+            await bot.send_photo(chat_id=message.chat.id, photo=buffer)
     except:
         await bot.send_message(message.chat.id, "При получении статистики за 7 дней возникла странная ошибка...")
 
