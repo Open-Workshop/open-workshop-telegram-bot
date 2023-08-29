@@ -33,6 +33,12 @@ async def send_welcome(message):
 Чтобы получить `ZIP` архив отправьте ссылку на мод или `ID` мода в *Steam* и бот в ответ даст `ZIP` архив 🤝
     """, parse_mode="Markdown")
 
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton(text='Клик!', url='https://steamdb.info/sub/17906/apps/'))
+    await bot.reply_to(message, """\
+Вот список поддерживаемых игр 👀
+    """, parse_mode="Markdown", reply_markup=markup)
+
 
 @bot.message_handler(commands=['project', 'проект'])
 async def project(message):
@@ -246,7 +252,10 @@ async def echo_message(message):
                             if header_result.get('content-type') == "application/json":
                                 data = json.loads(res.decode())
                                 if data.get(str(link), None) == None:
-                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢")
+                                    markup = telebot.types.InlineKeyboardMarkup()
+                                    markup.add(telebot.types.InlineKeyboardButton(text='Список поддерживаемых игр 👀',
+                                                                                  url='https://steamdb.info/sub/17906/apps/'))
+                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢", reply_markup=markup)
                                     return -1
                                 elif data[str(link)] <= 1:
                                     try:
@@ -291,7 +300,10 @@ async def echo_message(message):
                                                                        f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}")
                                                     return
                                                 else:
-                                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢")
+                                                    markup = telebot.types.InlineKeyboardMarkup()
+                                                    markup.add(telebot.types.InlineKeyboardButton(text='Список поддерживаемых игр 👀',
+                                                                                                  url='https://steamdb.info/sub/17906/apps/'))
+                                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢", reply_markup=markup)
                                     except:
                                         await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=1)_",
                                                            parse_mode="Markdown")
