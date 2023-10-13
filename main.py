@@ -5,11 +5,8 @@ import tools
 import telebot
 import aiohttp
 import asyncio
-import requests
 from datetime import timedelta
 import matplotlib.pyplot as plt
-from urllib.parse import urlparse
-from urllib.parse import parse_qs
 from telebot.async_telebot import AsyncTeleBot
 
 SERVER_ADDRESS = 'https://api.openworkshop.su'
@@ -192,6 +189,8 @@ async def echo_message(message):
                             markup = telebot.types.InlineKeyboardMarkup()
                             markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
                                                                           url=SERVER_ADDRESS+f'/download/{link}'))
+                            markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
+                                                                          url=WEBSITE_ADDRESS+f'/mod/{link}'))
                             await bot.send_message(message.chat.id,
                                                    f"Ого! `{info['result'].get('name', str(link))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
                                                    parse_mode="Markdown", reply_markup=markup)
@@ -218,8 +217,12 @@ async def echo_message(message):
                                     document=file,
                                     reply_to_message_id=message.id,
                                     timeout=10)
+
+                                markup = telebot.types.InlineKeyboardMarkup()
+                                markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
+                                                                              url=WEBSITE_ADDRESS + f'/mod/{link}'))
                                 await bot.reply_to(message,
-                                                   f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}")
+                                                   f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}", reply_markup=markup)
                                 return
                             else:
                                 result = await response.read()
@@ -270,6 +273,8 @@ async def echo_message(message):
                                                 markup = telebot.types.InlineKeyboardMarkup()
                                                 markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
                                                                                               url=SERVER_ADDRESS+f'/download/{link}'))
+                                                markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
+                                                                                              url=WEBSITE_ADDRESS+f'/mod/{link}'))
                                                 await bot.send_message(message.chat.id,
                                                                        f"Ого! `{info['result'].get('name', str(link))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
                                                                        parse_mode="Markdown", reply_markup=markup)
@@ -296,8 +301,12 @@ async def echo_message(message):
                                                         document=file,
                                                         reply_to_message_id=message.id,
                                                         timeout=10)
+
+                                                    markup = telebot.types.InlineKeyboardMarkup()
+                                                    markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
+                                                                                                  url=WEBSITE_ADDRESS + f'/mod/{link}'))
                                                     await bot.reply_to(message,
-                                                                       f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}")
+                                                                       f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}", reply_markup=markup)
                                                     return
                                                 else:
                                                     markup = telebot.types.InlineKeyboardMarkup()
@@ -326,11 +335,10 @@ async def echo_message(message):
                 else:
                     await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=3)_", parse_mode="Markdown")
         else:
-            if link is str and (
-                    link.startswith("https://steamcommunity.com") or link.startswith("https://store.steampowered.com")):
+            if type(link).__name__ == 'str' and (link.startswith("https://steamcommunity.com") or link.startswith("https://store.steampowered.com") or link.startswith("https://openworkshop.su")):
                 await bot.reply_to(message, "Мне нужна ссылка конкретно на мод! _(или его ID)_", parse_mode="Markdown")
-            elif link is str and (link.startswith("https://") or link.startswith("http://")):
-                await bot.reply_to(message, "Пока что я умею скачивать только со Steam 😿")
+            elif type(link).__name__ == 'str' and (link.startswith("https://") or link.startswith("http://")):
+                await bot.reply_to(message, "Пока что я умею скачивать только со Steam и Open Workshop 😿")
             else:
                 await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!", parse_mode="Markdown")
     except:

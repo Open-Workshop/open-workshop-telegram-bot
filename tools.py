@@ -26,11 +26,16 @@ graphs_ignore = [
 
 async def pars_link(link):
     if link.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or link.startswith(
-                       "https://steamcommunity.com/workshop/filedetails/"):
+                       "https://steamcommunity.com/workshop/filedetails/") or link.startswith(
+                       "https://openworkshop.su/mod/"):
         parsed = urlparse(link, "highlight=params#url-parsing")
-        captured_value = parse_qs(parsed.query)
+
         try:
-            link = captured_value['id'][0]
+            if parsed.path.startswith("/mod/"):
+                link = parsed.path.removeprefix("/mod/")
+            else:
+                captured_value = parse_qs(parsed.query)
+                link = captured_value['id'][0]
         except:
             link = False
     return link
