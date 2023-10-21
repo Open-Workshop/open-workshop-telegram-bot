@@ -22,19 +22,11 @@ bot = AsyncTeleBot(API_TOKEN)
 @bot.message_handler(commands=['help', 'start', "старт", "помощь"])
 async def send_welcome(message):
     await bot.reply_to(message, """\
-Этот бот позволяет скачивать моды со *Steam* через чат *Telegram!* 💨\n
-Разработчики не несут ответственность за контент получаемый через бота и ваши намеренья как его использовать. 📄\n
-А так же продолжая использовать бота вы подтверждаете, что официально приобрели игру/программу на одной из площадок где она представлена! 🛒
+Этот бот позволяет скачивать моды с Open Workshop и ассоцированные моды со *Steam* через чат *Telegram!* 💨\n\
     """, parse_mode="Markdown")
     await bot.reply_to(message, """\
-Чтобы получить `ZIP` архив отправьте ссылку на мод или `ID` мода в *Steam* и бот в ответ даст `ZIP` архив 🤝
+Чтобы получить `ZIP` архив отправьте ссылку на мод или `ID` мода в *Open Workshop* или *Steam* и бот в ответ даст `ZIP` архив 🤝
     """, parse_mode="Markdown")
-
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton(text='Клик!', url='https://steamdb.info/sub/17906/apps/'))
-    await bot.reply_to(message, """\
-Вот список поддерживаемых игр 👀
-    """, parse_mode="Markdown", reply_markup=markup)
 
 
 @bot.message_handler(commands=['project', 'проект'])
@@ -234,100 +226,10 @@ async def echo_message(message):
 
                 if header_result.get('content-type') == "application/json":
                     data = json.loads(result.decode())
-                    if data["error_id"] == 0 or data["error_id"] == 3:
+                    if data["error_id"] in [0, 1, 3]:
                         await bot.reply_to(message,
-                            "На сервере нету этого мода, но он сейчас его загрузит! _(это может занять некоторое время)_",
+                            "На сервере нету этого мода :(",
                             parse_mode="Markdown")
-
-                        for i in range(60):
-                            await asyncio.sleep(1)
-                            try:
-                                async with aiohttp.ClientSession() as session:
-                                    response = await session.get(
-                                        url=SERVER_ADDRESS + f"/condition/mod/%5B{str(link)}%5D",
-                                        timeout=10)
-                                    res = await response.read()
-                                    header_result = response.headers
-                            except:
-                                await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=5)_",
-                                                   parse_mode="Markdown")
-                                return -1
-                            if header_result.get('content-type') == "application/json":
-                                data = json.loads(res.decode())
-                                if data.get(str(link), None) == None:
-                                    markup = telebot.types.InlineKeyboardMarkup()
-                                    markup.add(telebot.types.InlineKeyboardButton(text='Список поддерживаемых игр 👀',
-                                                                                  url='https://steamdb.info/sub/17906/apps/'))
-                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢", reply_markup=markup)
-                                    return -1
-                                elif data[str(link)] <= 1:
-                                    try:
-                                        async with aiohttp.ClientSession() as session:
-                                            response = await session.get(url=SERVER_ADDRESS + f"/info/mod/{str(link)}",
-                                                                         timeout=10)
-                                            data = await response.text()
-
-                                            # Если больше 30 мб (получаю от сервера в байтах, а значит и сравниваю в них)
-                                            info = json.loads(data)
-                                            if info["result"] is not None and info["result"].get("size", 0) > 31457280:
-                                                markup = telebot.types.InlineKeyboardMarkup()
-                                                markup.add(telebot.types.InlineKeyboardButton(text='Скачать',
-                                                                                              url=SERVER_ADDRESS+f'/download/{link}'))
-                                                markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
-                                                                                              url=WEBSITE_ADDRESS+f'/mod/{link}'))
-                                                await bot.send_message(message.chat.id,
-                                                                       f"Ого! `{info['result'].get('name', str(link))}` весит {round(info['result'].get('size', 1)/1048576, 1)} мегабайт!\nСкачай его по прямой ссылке 😃",
-                                                                       parse_mode="Markdown", reply_markup=markup)
-                                                return
-                                    except:
-                                        await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=4)_",
-                                                           parse_mode="Markdown")
-                                        return -1
-
-                                    try:
-                                        async with aiohttp.ClientSession() as session:
-                                            async with session.get(url=SERVER_ADDRESS + f"/download/{str(link)}",
-                                                                   timeout=20) as response:
-                                                if response.headers.get('content-type') == "application/zip":
-                                                    file_content = await response.read()
-                                                    file_name = await tools.get_name(
-                                                        response.headers.get("content-disposition", "ERROR.zip"))
-                                                    print(f"File name: {file_name}")
-                                                    file = io.BytesIO(file_content)
-
-                                                    await bot.send_document(
-                                                        message.chat.id,
-                                                        visible_file_name=await tools.get_name(file_name),
-                                                        document=file,
-                                                        reply_to_message_id=message.id,
-                                                        timeout=10)
-
-                                                    markup = telebot.types.InlineKeyboardMarkup()
-                                                    markup.add(telebot.types.InlineKeyboardButton(text='Мод на сайте',
-                                                                                                  url=WEBSITE_ADDRESS + f'/mod/{link}'))
-                                                    await bot.reply_to(message,
-                                                                       f"Ваш запрос занял {await tools.format_seconds(round(time.time() - start_time, 1))}", reply_markup=markup)
-                                                    return
-                                                else:
-                                                    markup = telebot.types.InlineKeyboardMarkup()
-                                                    markup.add(telebot.types.InlineKeyboardButton(text='Список поддерживаемых игр 👀',
-                                                                                                  url='https://steamdb.info/sub/17906/apps/'))
-                                                    await bot.reply_to(message, "Серверу не удалось загрузить этот мод 😢", reply_markup=markup)
-                                    except:
-                                        await bot.reply_to(message, "Похоже, что сервер не отвечает 😔 _(point=1)_",
-                                                           parse_mode="Markdown")
-
-                                    return
-                            else:
-                                await bot.reply_to(message, "Сервер прислал неожиданный ответ 😧 _(point=1)_",
-                                                   parse_mode="Markdown")
-                                return
-                        await bot.reply_to(message, "Превышено время ожидания ответа с сервера!")
-                        return -1
-
-                    elif data["error_id"] == 1:
-                        await bot.reply_to(message,
-                            "Сервер запускается и не может сейчас грузить моды! Повтори попытку через пару минут :)")
                     elif data["error_id"] == 2:
                         await bot.reply_to(message, "Сервер говорит что такого мода не существует 😢")
                     else:
@@ -338,7 +240,7 @@ async def echo_message(message):
             if type(link).__name__ == 'str' and (link.startswith("https://steamcommunity.com") or link.startswith("https://store.steampowered.com") or link.startswith("https://openworkshop.su")):
                 await bot.reply_to(message, "Мне нужна ссылка конкретно на мод! _(или его ID)_", parse_mode="Markdown")
             elif type(link).__name__ == 'str' and (link.startswith("https://") or link.startswith("http://")):
-                await bot.reply_to(message, "Пока что я умею скачивать только со Steam и Open Workshop 😿")
+                await bot.reply_to(message, "Пока что я умею скачивать только c Open Workshop и ассоцированные моды со Steam 😿")
             else:
                 await bot.reply_to(message, "Если ты хочешь скачать мод, то просто скинь ссылку или `ID` мода в чат!", parse_mode="Markdown")
     except:
