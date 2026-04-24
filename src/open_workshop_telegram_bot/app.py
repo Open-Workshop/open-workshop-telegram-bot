@@ -419,34 +419,34 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                 return -1
 
                             result = info.get("result")
-                            if isinstance(result, dict) and result.get("size", 0) > large_file_threshold_bytes:
-                                markup = build_inline_markup(
-                                    large_file_buttons,
-                                    server=server_address,
-                                    website=website_address,
-                                    docs_path=docs_path,
-                                    mod_id=mod_id,
-                                )
-                                try:
-                                    await bot.send_message(
-                                        message.chat.id,
-                                        download_text(
-                                            "large_file_intro",
-                                            name=result.get("name", str(mod_id)),
-                                            size_mb=round(result.get("size", 1) / 1048576, 1),
-                                        ),
-                                        parse_mode="Markdown",
-                                        reply_markup=markup,
+                            if isinstance(result, dict):
+                                if result.get("size", 0) > large_file_threshold_bytes:
+                                    markup = build_inline_markup(
+                                        large_file_buttons,
+                                        server=server_address,
+                                        website=website_address,
+                                        docs_path=docs_path,
+                                        mod_id=mod_id,
                                     )
-                                except Exception:
-                                    bot_stats.record_counts(download_fail=1)
-                                    await safe_reply(message, download_text("send_direct_link_fail"))
+                                    try:
+                                        await bot.send_message(
+                                            message.chat.id,
+                                            download_text(
+                                                "large_file_intro",
+                                                name=result.get("name", str(mod_id)),
+                                                size_mb=round(result.get("size", 1) / 1048576, 1),
+                                            ),
+                                            parse_mode="Markdown",
+                                            reply_markup=markup,
+                                        )
+                                    except Exception:
+                                        bot_stats.record_counts(download_fail=1)
+                                        await safe_reply(message, download_text("send_direct_link_fail"))
+                                        return
+
+                                    bot_stats.record_counts(download_success=1)
                                     return
-
-                                bot_stats.record_counts(download_success=1)
-                                return
-
-                            if "error_id" in info:
+                            elif "error_id" in info:
                                 bot_stats.record_counts(download_fail=1)
                                 if info["error_id"] in [0, 1, 3]:
                                     log_upstream_response(f"mods/{mod_id}", response, data)
@@ -464,17 +464,17 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                         reply_text=download_text("unexpected_json"),
                                     )
                                 return
-
-                            bot_stats.record_counts(download_fail=1)
-                            await reply_with_upstream_error(
-                                message,
-                                safe_reply,
-                                response=response,
-                                body=data,
-                                stage=f"mods/{mod_id}",
-                                reply_text=download_text("unexpected_json"),
-                            )
-                            return
+                            else:
+                                bot_stats.record_counts(download_fail=1)
+                                await reply_with_upstream_error(
+                                    message,
+                                    safe_reply,
+                                    response=response,
+                                    body=data,
+                                    stage=f"mods/{mod_id}",
+                                    reply_text=download_text("unexpected_json"),
+                                )
+                                return
                 except asyncio.TimeoutError:
                     logger.warning("Timeout while requesting mods/%s", mod_id)
                     bot_stats.record_counts(download_fail=1)
