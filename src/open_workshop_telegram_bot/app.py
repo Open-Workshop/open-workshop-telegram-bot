@@ -376,7 +376,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                 try:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
-                            url=f"{server_address}/info/mod/{mod_id}",
+                            url=f"{server_address}/mods/{mod_id}",
                             timeout=info_timeout_seconds,
                         ) as response:
                             data = await response.text()
@@ -387,7 +387,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     safe_reply,
                                     response=response,
                                     body=data,
-                                    stage=f"info/mod/{mod_id}",
+                                    stage=f"mods/{mod_id}",
                                     reply_text=download_text("unexpected_json"),
                                 )
                                 return -1
@@ -401,7 +401,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     safe_reply,
                                     response=response,
                                     body=data,
-                                    stage=f"info/mod/{mod_id}",
+                                    stage=f"mods/{mod_id}",
                                     reply_text=download_text("unexpected_json"),
                                 )
                                 return -1
@@ -413,7 +413,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     safe_reply,
                                     response=response,
                                     body=data,
-                                    stage=f"info/mod/{mod_id}",
+                                    stage=f"mods/{mod_id}",
                                     reply_text=download_text("unexpected_json"),
                                 )
                                 return -1
@@ -449,10 +449,10 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                             if "error_id" in info:
                                 bot_stats.record_counts(download_fail=1)
                                 if info["error_id"] in [0, 1, 3]:
-                                    log_upstream_response(f"info/mod/{mod_id}", response, data)
+                                    log_upstream_response(f"mods/{mod_id}", response, data)
                                     await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
                                 elif info["error_id"] == 2:
-                                    log_upstream_response(f"info/mod/{mod_id}", response, data)
+                                    log_upstream_response(f"mods/{mod_id}", response, data)
                                     await safe_reply(message, download_text("unknown_mod_json"))
                                 else:
                                     await reply_with_upstream_error(
@@ -460,7 +460,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                         safe_reply,
                                         response=response,
                                         body=data,
-                                        stage=f"info/mod/{mod_id}",
+                                        stage=f"mods/{mod_id}",
                                         reply_text=download_text("unexpected_json"),
                                     )
                                 return
@@ -471,17 +471,17 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                 safe_reply,
                                 response=response,
                                 body=data,
-                                stage=f"info/mod/{mod_id}",
+                                stage=f"mods/{mod_id}",
                                 reply_text=download_text("unexpected_json"),
                             )
                             return
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout while requesting info/mod/%s", mod_id)
+                    logger.warning("Timeout while requesting mods/%s", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_timeout_info"), parse_mode="Markdown")
                     return -1
                 except Exception:
-                    logger.exception("Unexpected error while requesting info/mod/%s", mod_id)
+                    logger.exception("Unexpected error while requesting mods/%s", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_unavailable"))
                     return -1
@@ -489,7 +489,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                 try:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
-                            url=f"{server_address}/download/steam/{mod_id}",
+                            url=f"{server_address}/mods/{mod_id}/download",
                             timeout=download_timeout_seconds,
                         ) as response:
                             content_type = normalize_content_type(response.headers.get("content-type"))
@@ -540,17 +540,17 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     safe_reply,
                                     response=response,
                                     body=result,
-                                    stage=f"download/steam/{mod_id}",
+                                    stage=f"mods/{mod_id}/download",
                                     reply_text=download_text("unexpected_download"),
                                 )
                                 return -1
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout while requesting download/steam/%s", mod_id)
+                    logger.warning("Timeout while requesting mods/%s/download", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_timeout_download"), parse_mode="Markdown")
                     return -1
                 except Exception:
-                    logger.exception("Unexpected error while requesting download/steam/%s", mod_id)
+                    logger.exception("Unexpected error while requesting mods/%s/download", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_unavailable"))
                     return -1
@@ -566,20 +566,20 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                             safe_reply,
                             response=response,
                             body=result,
-                            stage=f"download/steam/{mod_id}",
+                            stage=f"mods/{mod_id}/download",
                             reply_text=download_text("unexpected_download"),
                         )
                         return -1
 
                     if isinstance(data, dict) and data.get("error_id") in [0, 1, 3]:
                         bot_stats.record_counts(download_fail=1)
-                        log_upstream_response(f"download/steam/{mod_id}", response, result)
+                        log_upstream_response(f"mods/{mod_id}/download", response, result)
                         await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
                         return
 
                     if isinstance(data, dict) and data.get("error_id") == 2:
                         bot_stats.record_counts(download_fail=1)
-                        log_upstream_response(f"download/steam/{mod_id}", response, result)
+                        log_upstream_response(f"mods/{mod_id}/download", response, result)
                         await safe_reply(message, download_text("unknown_mod_json"))
                         return
 
@@ -590,7 +590,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                             safe_reply,
                             response=response,
                             body=result,
-                            stage=f"download/steam/{mod_id}",
+                            stage=f"mods/{mod_id}/download",
                             reply_text=download_text("unexpected_download"),
                         )
                         return -1
@@ -601,7 +601,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                     safe_reply,
                     response=response,
                     body=result,
-                    stage=f"download/steam/{mod_id}",
+                    stage=f"mods/{mod_id}/download",
                     reply_text=download_text("unexpected_download"),
                 )
                 return -1
