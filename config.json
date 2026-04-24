@@ -1,7 +1,7 @@
 {
   "server": {
-    "api_address": "https://api.openworkshop.su",
-    "website_address": "https://openworkshop.su",
+    "api_address": "https://api.openworkshop.miskler.ru",
+    "website_address": "https://openworkshop.miskler.ru",
     "docs_path": "/docs"
   },
   "telegram": {
