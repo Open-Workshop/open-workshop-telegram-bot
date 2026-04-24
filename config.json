@@ -100,8 +100,8 @@
       "send_archive_fail": "Не удалось отправить архив через Telegram 😔",
       "no_mod_json": "На сервере нету этого мода :(",
       "unknown_mod_json": "Сервер говорит что такого мода не существует 😢",
-      "unexpected_json": "Сервер прислал неожиданный ответ 😧 _(point=2)_",
-      "unexpected_download": "Сервер прислал неожиданный ответ 😧 _(point=3)_",
+      "unexpected_json": "Сервер вернул ошибку:\n{error}",
+      "unexpected_download": "Сервер вернул ошибку:\n{error}",
       "request_duration": "Ваш запрос занял {duration}",
       "server_unavailable": "Похоже, что сервер не отвечает 😔"
     }
