@@ -16,7 +16,7 @@ from telebot.async_telebot import AsyncTeleBot
 
 from .config import build_known_command_tokens, load_config
 from . import stats as bot_stats
-from .utils import extract_filename, format_seconds, parse_link
+from .utils import extract_filename, format_seconds, is_open_workshop_url, parse_link
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TOKEN_ENV_NAMES = ("BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
@@ -70,7 +70,7 @@ def build_inline_markup(buttons: list[dict[str, Any]], **values: Any):
 
 async def run() -> None:
     config = load_config()
-    bot_stats.configure(config["statistics"].get("db_path"), base_dir=PROJECT_ROOT)
+    bot_stats.configure(config["statistics"]["db_path"], base_dir=PROJECT_ROOT)
     bot_stats.init_db()
 
     api_token = load_api_token()
@@ -92,7 +92,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
 
     server_address = server_config["api_address"].rstrip("/")
     website_address = server_config["website_address"].rstrip("/")
-    docs_path = server_config.get("docs_path", "/docs")
+    docs_path = server_config["docs_path"]
 
     commands = telegram_config["commands"]
     known_command_tokens = build_known_command_tokens(commands)
@@ -101,7 +101,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
     project_buttons = telegram_config["project_buttons"]
 
     history_days = max(1, int(statistics_config["history_days"]))
-    figure_size = tuple(statistics_config.get("figure_size", [12, 6]))
+    figure_size = tuple(statistics_config["figure_size"])
     marker = statistics_config["marker"]
     line_width = statistics_config["line_width"]
     legend_fontsize = statistics_config["legend_fontsize"]
@@ -265,7 +265,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
             bot_stats.record_counts(incoming=1)
             start_time = time.time()
 
-            link = parse_link(message_text)
+            link = parse_link(message_text, website_address)
             if link is False:
                 bot_stats.record_counts(invalid_input=1)
                 await safe_reply(message, response_text("invalid_link"))
@@ -397,7 +397,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                 if isinstance(link, str) and (
                     link.startswith("https://steamcommunity.com")
                     or link.startswith("https://store.steampowered.com")
-                    or link.startswith("https://openworkshop.su")
+                    or is_open_workshop_url(message_text, website_address)
                 ):
                     await safe_reply(message, response_text("specific_mod_link"), parse_mode="Markdown")
                 elif isinstance(link, str) and (link.startswith("https://") or link.startswith("http://")):

@@ -7,23 +7,53 @@ from urllib.parse import parse_qs, urlparse
 import pymorphy2
 
 
-def parse_link(link: str | None) -> str | bool:
+def _normalize_hostname(url: str | None) -> str | None:
+    if not isinstance(url, str):
+        return None
+
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return None
+
+    hostname = hostname.lower()
+    if hostname.startswith("www."):
+        return hostname[4:]
+    return hostname
+
+
+def is_open_workshop_url(link: str | None, website_address: str | None = None) -> bool:
+    if not isinstance(link, str) or not isinstance(website_address, str):
+        return False
+
+    parsed = urlparse(link)
+    return parsed.scheme in {"http", "https"} and _normalize_hostname(link) == _normalize_hostname(website_address)
+
+
+def _extract_mod_id(parsed) -> str | bool:
+    if parsed.path.startswith("/mod/"):
+        return parsed.path.removeprefix("/mod/").split("/", 1)[0]
+
+    captured_value = parse_qs(parsed.query)
+    try:
+        return captured_value["id"][0]
+    except (KeyError, IndexError):
+        return False
+
+
+def parse_link(link: str | None, website_address: str | None = None) -> str | bool:
     if not isinstance(link, str):
         return False
 
     if link.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or link.startswith(
         "https://steamcommunity.com/workshop/filedetails/"
-    ) or link.startswith("https://openworkshop.su/mod/"):
-        parsed = urlparse(link, "highlight=params#url-parsing")
+    ):
+        parsed = urlparse(link)
+        link = _extract_mod_id(parsed)
 
-        try:
-            if parsed.path.startswith("/mod/"):
-                link = parsed.path.removeprefix("/mod/")
-            else:
-                captured_value = parse_qs(parsed.query)
-                link = captured_value["id"][0]
-        except (KeyError, IndexError):
-            link = False
+    elif is_open_workshop_url(link, website_address):
+        parsed = urlparse(link)
+        if parsed.path.startswith("/mod/") or "id" in parse_qs(parsed.query):
+            link = _extract_mod_id(parsed)
 
     return link
 
