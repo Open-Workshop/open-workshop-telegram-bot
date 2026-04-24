@@ -17,7 +17,13 @@ from telebot.async_telebot import AsyncTeleBot
 
 from .config import build_known_command_tokens, load_config
 from . import stats as bot_stats
-from .utils import extract_filename, format_seconds, is_open_workshop_url, parse_link
+from .utils import (
+    extract_filename,
+    format_seconds,
+    is_open_workshop_url,
+    is_steam_workshop_url,
+    parse_link,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TOKEN_ENV_NAMES = ("BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
@@ -357,6 +363,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
             bot_stats.record_counts(incoming=1)
             start_time = time.time()
 
+            steam_workshop_url = is_steam_workshop_url(message_text)
             link = parse_link(message_text, website_address)
             if link is False:
                 bot_stats.record_counts(invalid_input=1)
@@ -372,6 +379,108 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
 
                 bot_stats.record_counts(download_attempt=1)
                 download_attempt_started = True
+
+                if steam_workshop_url:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                url=f"{server_address}/mods",
+                                params={
+                                    "primary_sources": json.dumps(["steam"]),
+                                    "allowed_sources_ids": json.dumps([mod_id]),
+                                    "page_size": "1",
+                                    "page": "0",
+                                    "general": "true",
+                                },
+                                timeout=info_timeout_seconds,
+                            ) as response:
+                                data = await response.text()
+                                stage = (
+                                    "mods?primary_sources=%5B%22steam%22%5D"
+                                    f"&allowed_sources_ids=%5B{mod_id}%5D"
+                                )
+                                if response.status != 200:
+                                    bot_stats.record_counts(download_fail=1)
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=data,
+                                        stage=stage,
+                                        reply_text=download_text("unexpected_json"),
+                                    )
+                                    return -1
+
+                                try:
+                                    search_info = json.loads(data)
+                                except json.JSONDecodeError:
+                                    bot_stats.record_counts(download_fail=1)
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=data,
+                                        stage=stage,
+                                        reply_text=download_text("unexpected_json"),
+                                    )
+                                    return -1
+
+                                if not isinstance(search_info, dict):
+                                    bot_stats.record_counts(download_fail=1)
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=data,
+                                        stage=stage,
+                                        reply_text=download_text("unexpected_json"),
+                                    )
+                                    return -1
+
+                                results = search_info.get("results")
+                                if not isinstance(results, list) or not results:
+                                    bot_stats.record_counts(download_fail=1)
+                                    await safe_reply(
+                                        message,
+                                        download_text("no_mod_json"),
+                                        parse_mode="Markdown",
+                                    )
+                                    return -1
+
+                                first_result = results[0]
+                                if not isinstance(first_result, dict):
+                                    bot_stats.record_counts(download_fail=1)
+                                    await safe_reply(
+                                        message,
+                                        download_text("no_mod_json"),
+                                        parse_mode="Markdown",
+                                    )
+                                    return -1
+
+                                try:
+                                    mod_id = int(first_result["id"])
+                                except (TypeError, ValueError, KeyError):
+                                    bot_stats.record_counts(download_fail=1)
+                                    await safe_reply(
+                                        message,
+                                        download_text("no_mod_json"),
+                                        parse_mode="Markdown",
+                                    )
+                                    return -1
+                    except asyncio.TimeoutError:
+                        logger.warning("Timeout while resolving steam workshop mod %s", mod_id)
+                        bot_stats.record_counts(download_fail=1)
+                        await safe_reply(
+                            message,
+                            download_text("server_timeout_info"),
+                            parse_mode="Markdown",
+                        )
+                        return -1
+                    except Exception:
+                        logger.exception("Unexpected error while resolving steam workshop mod %s", mod_id)
+                        bot_stats.record_counts(download_fail=1)
+                        await safe_reply(message, download_text("server_unavailable"))
+                        return -1
 
                 try:
                     async with aiohttp.ClientSession() as session:
@@ -608,7 +717,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
             else:
                 bot_stats.record_counts(invalid_input=1)
                 if isinstance(link, str) and (
-                    link.startswith("https://steamcommunity.com")
+                    steam_workshop_url
                     or link.startswith("https://store.steampowered.com")
                     or is_open_workshop_url(message_text, website_address)
                 ):

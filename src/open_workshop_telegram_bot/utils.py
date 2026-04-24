@@ -27,6 +27,20 @@ def is_open_workshop_url(link: str | None, website_address: str | None = None) -
     return parsed.scheme in {"http", "https"} and _normalize_hostname(link) == _normalize_hostname(website_address)
 
 
+def is_steam_workshop_url(link: str | None) -> bool:
+    if not isinstance(link, str):
+        return False
+
+    parsed = urlparse(link)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+
+    return _normalize_hostname(link) == "steamcommunity.com" and (
+        parsed.path.startswith("/sharedfiles/filedetails/")
+        or parsed.path.startswith("/workshop/filedetails/")
+    )
+
+
 def _extract_mod_id(parsed) -> str | bool:
     if parsed.path.startswith("/mod/"):
         return parsed.path.removeprefix("/mod/").split("/", 1)[0]
@@ -42,9 +56,7 @@ def parse_link(link: str | None, website_address: str | None = None) -> str | bo
     if not isinstance(link, str):
         return False
 
-    if link.startswith("https://steamcommunity.com/sharedfiles/filedetails/") or link.startswith(
-        "https://steamcommunity.com/workshop/filedetails/"
-    ):
+    if is_steam_workshop_url(link):
         parsed = urlparse(link)
         link = _extract_mod_id(parsed)
 
