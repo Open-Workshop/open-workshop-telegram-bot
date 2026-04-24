@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import email.utils
-from functools import lru_cache
+import math
 from urllib.parse import parse_qs, urlparse
-
-import pymorphy2
 
 
 def _normalize_hostname(url: str | None) -> str | None:
@@ -57,18 +55,34 @@ def parse_link(link: str | None, website_address: str | None = None) -> str | bo
 
     return link
 
-
-@lru_cache(maxsize=1)
-def _get_morph() -> pymorphy2.MorphAnalyzer:
-    return pymorphy2.MorphAnalyzer()
-
-
 def format_seconds(seconds: float | int, word: str = "секунда") -> str:
     try:
-        parsed_word = _get_morph().parse(word)[0]
-        return f"{seconds} {parsed_word.make_agree_with_number(seconds).word}"
-    except Exception:
-        return "ERROR"
+        value = float(seconds)
+    except (TypeError, ValueError):
+        return "0 секунд"
+
+    if not math.isfinite(value):
+        return "0 секунд"
+
+    rounded = round(value)
+    if math.isclose(value, rounded):
+        integer_value = int(rounded)
+        abs_value = abs(integer_value)
+        last_two = abs_value % 100
+        last_one = abs_value % 10
+
+        if 11 <= last_two <= 14:
+            unit = "секунд"
+        elif last_one == 1:
+            unit = "секунда"
+        elif last_one in (2, 3, 4):
+            unit = "секунды"
+        else:
+            unit = "секунд"
+
+        return f"{integer_value} {unit}"
+
+    return f"{value:g} секунды"
 
 
 def extract_filename(header: str) -> str:
