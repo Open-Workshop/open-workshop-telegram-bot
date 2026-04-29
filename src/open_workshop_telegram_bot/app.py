@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import telebot
 from telebot.async_telebot import AsyncTeleBot
 
+from .health import HealthProbeServer
 from .config import build_known_command_tokens, load_config
 from . import stats as bot_stats
 from .utils import (
@@ -189,15 +190,46 @@ def extract_problem_code(body: str | bytes) -> str | None:
     return code if isinstance(code, str) and code else None
 
 
+def _load_health_probe_config(config: dict[str, Any]) -> tuple[str, int]:
+    default_host = "0.0.0.0"
+    default_port = 8088
+
+    raw_health = config.get("health")
+    if not isinstance(raw_health, dict):
+        return default_host, default_port
+
+    host = raw_health.get("host")
+    if not isinstance(host, str) or not host.strip():
+        host = default_host
+    else:
+        host = host.strip()
+
+    port = raw_health.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or port < 0:
+        port = default_port
+
+    return host, port
+
+
 async def run() -> None:
     config = load_config()
     bot_stats.configure(config["statistics"]["db_path"], base_dir=PROJECT_ROOT)
     bot_stats.init_db()
 
-    api_token = load_api_token()
-    bot = AsyncTeleBot(api_token)
-    register_handlers(bot, config)
-    await bot.polling()
+    health_host, health_port = _load_health_probe_config(config)
+    probe = HealthProbeServer(host=health_host, port=health_port)
+    await probe.start()
+    try:
+        api_token = load_api_token()
+        bot = AsyncTeleBot(api_token)
+        register_handlers(bot, config)
+        probe.mark_ready()
+        try:
+            await bot.polling()
+        finally:
+            probe.mark_not_ready()
+    finally:
+        await probe.stop()
 
 
 def main() -> None:

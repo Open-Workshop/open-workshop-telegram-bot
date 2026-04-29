@@ -4,6 +4,10 @@
     "website_address": "https://openworkshop.miskler.ru",
     "docs_path": "/docs"
   },
+  "health": {
+    "host": "0.0.0.0",
+    "port": 8088
+  },
   "telegram": {
     "commands": {
       "help": ["help", "start", "старт", "помощь"],
