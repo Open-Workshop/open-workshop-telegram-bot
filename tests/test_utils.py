@@ -37,7 +37,28 @@ class LinkParsingTests(unittest.TestCase):
         self.assertEqual(
             parse_link(
                 "https://openworkshop.miskler.ru/mod/69752?game=5",
-                "https://openworkshop.miskler.ru",
+            ),
+            "69752",
+        )
+
+    def test_parse_link_returns_open_workshop_mod_id_for_any_host(self) -> None:
+        self.assertEqual(
+            parse_link("https://example.com/mod/69752?game=5"),
+            "69752",
+        )
+
+    def test_parse_link_returns_open_workshop_api_mod_id(self) -> None:
+        self.assertEqual(
+            parse_link(
+                "https://api.openworkshop.miskler.ru/mods/69752",
+            ),
+            "69752",
+        )
+
+    def test_parse_link_returns_open_workshop_api_query_id(self) -> None:
+        self.assertEqual(
+            parse_link(
+                "https://api.openworkshop.miskler.ru/mods?id=69752",
             ),
             "69752",
         )

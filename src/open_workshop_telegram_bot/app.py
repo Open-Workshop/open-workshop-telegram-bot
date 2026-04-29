@@ -166,6 +166,29 @@ async def reply_with_upstream_error(
     await reply_callback(message, reply_text.format(error=error_text), parse_mode=parse_mode)
 
 
+def parse_json_body(body: str | bytes) -> dict[str, Any] | None:
+    if isinstance(body, bytes):
+        text = body.decode("utf-8", errors="replace")
+    else:
+        text = body
+
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return None
+
+    return payload if isinstance(payload, dict) else None
+
+
+def extract_problem_code(body: str | bytes) -> str | None:
+    payload = parse_json_body(body)
+    if not payload:
+        return None
+
+    code = payload.get("code")
+    return code if isinstance(code, str) and code else None
+
+
 async def run() -> None:
     config = load_config()
     bot_stats.configure(config["statistics"]["db_path"], base_dir=PROJECT_ROOT)
@@ -364,7 +387,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
             start_time = time.time()
 
             steam_workshop_url = is_steam_workshop_url(message_text)
-            link = parse_link(message_text, website_address)
+            link = parse_link(message_text)
             if link is False:
                 bot_stats.record_counts(invalid_input=1)
                 await safe_reply(message, response_text("invalid_link"))
@@ -386,19 +409,15 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                             async with session.get(
                                 url=f"{server_address}/mods",
                                 params={
-                                    "primary_sources": json.dumps(["steam"]),
-                                    "allowed_sources_ids": json.dumps([mod_id]),
-                                    "page_size": "1",
-                                    "page": "0",
-                                    "general": "true",
+                                    "sources": ["steam"],
+                                    "source_ids": [mod_id],
+                                    "page_size": 1,
+                                    "page": 0,
                                 },
                                 timeout=info_timeout_seconds,
                             ) as response:
                                 data = await response.text()
-                                stage = (
-                                    "mods?primary_sources=%5B%22steam%22%5D"
-                                    f"&allowed_sources_ids=%5B{mod_id}%5D"
-                                )
+                                stage = f"mods?sources=steam&source_ids={mod_id}"
                                 if response.status != 200:
                                     bot_stats.record_counts(download_fail=1)
                                     await reply_with_upstream_error(
@@ -437,7 +456,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     )
                                     return -1
 
-                                results = search_info.get("results")
+                                results = search_info.get("items")
                                 if not isinstance(results, list) or not results:
                                     bot_stats.record_counts(download_fail=1)
                                     await safe_reply(
@@ -491,14 +510,19 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                             data = await response.text()
                             if response.status != 200:
                                 bot_stats.record_counts(download_fail=1)
-                                await reply_with_upstream_error(
-                                    message,
-                                    safe_reply,
-                                    response=response,
-                                    body=data,
-                                    stage=f"mods/{mod_id}",
-                                    reply_text=download_text("unexpected_json"),
-                                )
+                                problem_code = extract_problem_code(data)
+                                if problem_code in {"MOD_NOT_FOUND", "NOT_FOUND"}:
+                                    log_upstream_response(f"mods/{mod_id}", response, data)
+                                    await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
+                                else:
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=data,
+                                        stage=f"mods/{mod_id}",
+                                        reply_text=download_text("unexpected_json"),
+                                    )
                                 return -1
 
                             try:
@@ -527,62 +551,32 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                 )
                                 return -1
 
-                            result = info.get("result")
-                            if isinstance(result, dict):
-                                if result.get("size", 0) > large_file_threshold_bytes:
-                                    markup = build_inline_markup(
-                                        large_file_buttons,
-                                        server=server_address,
-                                        website=website_address,
-                                        docs_path=docs_path,
-                                        mod_id=mod_id,
-                                    )
-                                    try:
-                                        await bot.send_message(
-                                            message.chat.id,
-                                            download_text(
-                                                "large_file_intro",
-                                                name=result.get("name", str(mod_id)),
-                                                size_mb=round(result.get("size", 1) / 1048576, 1),
-                                            ),
-                                            parse_mode="Markdown",
-                                            reply_markup=markup,
-                                        )
-                                    except Exception:
-                                        bot_stats.record_counts(download_fail=1)
-                                        await safe_reply(message, download_text("send_direct_link_fail"))
-                                        return
-
-                                    bot_stats.record_counts(download_success=1)
-                                    return
-                            elif "error_id" in info:
-                                bot_stats.record_counts(download_fail=1)
-                                if info["error_id"] in [0, 1, 3]:
-                                    log_upstream_response(f"mods/{mod_id}", response, data)
-                                    await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
-                                elif info["error_id"] == 2:
-                                    log_upstream_response(f"mods/{mod_id}", response, data)
-                                    await safe_reply(message, download_text("unknown_mod_json"))
-                                else:
-                                    await reply_with_upstream_error(
-                                        message,
-                                        safe_reply,
-                                        response=response,
-                                        body=data,
-                                        stage=f"mods/{mod_id}",
-                                        reply_text=download_text("unexpected_json"),
-                                    )
-                                return
-                            else:
-                                bot_stats.record_counts(download_fail=1)
-                                await reply_with_upstream_error(
-                                    message,
-                                    safe_reply,
-                                    response=response,
-                                    body=data,
-                                    stage=f"mods/{mod_id}",
-                                    reply_text=download_text("unexpected_json"),
+                            mod_size = info.get("size", 0)
+                            if isinstance(mod_size, (int, float)) and mod_size > large_file_threshold_bytes:
+                                markup = build_inline_markup(
+                                    large_file_buttons,
+                                    server=server_address,
+                                    website=website_address,
+                                    docs_path=docs_path,
+                                    mod_id=mod_id,
                                 )
+                                try:
+                                    await bot.send_message(
+                                        message.chat.id,
+                                        download_text(
+                                            "large_file_intro",
+                                            name=info.get("name", str(mod_id)),
+                                            size_mb=round(float(mod_size) / 1048576, 1),
+                                        ),
+                                        parse_mode="Markdown",
+                                        reply_markup=markup,
+                                    )
+                                except Exception:
+                                    bot_stats.record_counts(download_fail=1)
+                                    await safe_reply(message, download_text("send_direct_link_fail"))
+                                    return
+
+                                bot_stats.record_counts(download_success=1)
                                 return
                 except asyncio.TimeoutError:
                     logger.warning("Timeout while requesting mods/%s", mod_id)
@@ -597,129 +591,192 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
 
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(
-                            url=f"{server_address}/mods/{mod_id}/download",
-                            timeout=download_timeout_seconds,
+                        async with session.post(
+                            url=f"{server_address}/mods/{mod_id}/download-url",
+                            timeout=info_timeout_seconds,
                         ) as response:
-                            content_type = normalize_content_type(response.headers.get("content-type"))
-                            if content_type == "application/zip":
-                                file_content = await response.read()
-                                file_name = extract_filename(response.headers.get("content-disposition", "ERROR.zip"))
-                                print(f"File name: {file_name}")
-                                file = io.BytesIO(file_content)
-
-                                try:
-                                    await bot.send_document(
-                                        message.chat.id,
-                                        visible_file_name=extract_filename(file_name),
-                                        document=file,
-                                        reply_to_message_id=message.id,
-                                        timeout=telegram_timeout_seconds,
+                            data = await response.text()
+                            if response.status not in {200, 201}:
+                                bot_stats.record_counts(download_fail=1)
+                                problem_code = extract_problem_code(data)
+                                if problem_code in {"MOD_NOT_FOUND", "NOT_FOUND"}:
+                                    log_upstream_response(f"mods/{mod_id}/download-url", response, data)
+                                    await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
+                                else:
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=data,
+                                        stage=f"mods/{mod_id}/download-url",
+                                        reply_text=download_text("unexpected_json"),
                                     )
-                                except Exception:
-                                    bot_stats.record_counts(download_fail=1)
-                                    await safe_reply(message, download_text("send_archive_fail"))
-                                    return
+                                return -1
 
-                                bot_stats.record_counts(download_success=1)
-
-                                markup = build_inline_markup(
-                                    archive_buttons,
-                                    server=server_address,
-                                    website=website_address,
-                                    docs_path=docs_path,
-                                    mod_id=mod_id,
-                                )
-                                await safe_reply(
-                                    message,
-                                    download_text(
-                                        "request_duration",
-                                        duration=format_seconds(round(time.time() - start_time, 1)),
-                                    ),
-                                    reply_markup=markup,
-                                )
-                                return
-
-                            result = await response.read()
-                            header_result = response.headers
-                            if response.status != 200:
+                            try:
+                                download_info = json.loads(data)
+                            except json.JSONDecodeError:
                                 bot_stats.record_counts(download_fail=1)
                                 await reply_with_upstream_error(
                                     message,
                                     safe_reply,
                                     response=response,
+                                    body=data,
+                                    stage=f"mods/{mod_id}/download-url",
+                                    reply_text=download_text("unexpected_json"),
+                                )
+                                return -1
+
+                            if not isinstance(download_info, dict):
+                                bot_stats.record_counts(download_fail=1)
+                                await reply_with_upstream_error(
+                                    message,
+                                    safe_reply,
+                                    response=response,
+                                    body=data,
+                                    stage=f"mods/{mod_id}/download-url",
+                                    reply_text=download_text("unexpected_json"),
+                                )
+                                return -1
+
+                            download_url = download_info.get("download_url")
+                            download_filename = download_info.get("filename")
+                            if not isinstance(download_url, str) or not download_url.strip():
+                                bot_stats.record_counts(download_fail=1)
+                                await reply_with_upstream_error(
+                                    message,
+                                    safe_reply,
+                                    response=response,
+                                    body=data,
+                                    stage=f"mods/{mod_id}/download-url",
+                                    reply_text=download_text("unexpected_json"),
+                                )
+                                return -1
+
+                            if not isinstance(download_filename, str) or not download_filename.strip():
+                                download_filename = f"{mod_id}.zip"
+
+                        async with session.get(
+                            url=download_url,
+                            timeout=download_timeout_seconds,
+                        ) as response:
+                            content_type = normalize_content_type(response.headers.get("content-type"))
+                            result = await response.read()
+                            header_result = response.headers
+                            if response.status != 200:
+                                bot_stats.record_counts(download_fail=1)
+                                if content_type in {"application/json", "application/problem+json"} or result.lstrip().startswith((b"{", b"[")):
+                                    try:
+                                        data = json.loads(result.decode("utf-8", errors="replace"))
+                                    except json.JSONDecodeError:
+                                        await reply_with_upstream_error(
+                                            message,
+                                            safe_reply,
+                                            response=response,
+                                            body=result,
+                                            stage=f"storage/{mod_id}",
+                                            reply_text=download_text("unexpected_download"),
+                                        )
+                                        return -1
+
+                                    if isinstance(data, dict) and data.get("code") in {"MOD_NOT_FOUND", "NOT_FOUND"}:
+                                        log_upstream_response(f"storage/{mod_id}", response, result)
+                                        await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
+                                        return
+
+                                await reply_with_upstream_error(
+                                    message,
+                                    safe_reply,
+                                    response=response,
                                     body=result,
-                                    stage=f"mods/{mod_id}/download",
+                                    stage=f"storage/{mod_id}",
                                     reply_text=download_text("unexpected_download"),
                                 )
                                 return -1
+
+                            if content_type in {"application/json", "application/problem+json"} or result.lstrip().startswith((b"{", b"[")):
+                                try:
+                                    data = json.loads(result.decode("utf-8", errors="replace"))
+                                except json.JSONDecodeError:
+                                    bot_stats.record_counts(download_fail=1)
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=result,
+                                        stage=f"storage/{mod_id}",
+                                        reply_text=download_text("unexpected_download"),
+                                    )
+                                    return -1
+
+                                if isinstance(data, dict) and data.get("code") in {"MOD_NOT_FOUND", "NOT_FOUND"}:
+                                    bot_stats.record_counts(download_fail=1)
+                                    log_upstream_response(f"storage/{mod_id}", response, result)
+                                    await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
+                                    return
+
+                                if isinstance(data, dict):
+                                    bot_stats.record_counts(download_fail=1)
+                                    await reply_with_upstream_error(
+                                        message,
+                                        safe_reply,
+                                        response=response,
+                                        body=result,
+                                        stage=f"storage/{mod_id}",
+                                        reply_text=download_text("unexpected_download"),
+                                    )
+                                    return -1
+
+                            file_name = extract_filename(header_result.get("content-disposition", "")) or download_filename
+                            file = io.BytesIO(result)
+
+                            try:
+                                await bot.send_document(
+                                    message.chat.id,
+                                    visible_file_name=file_name,
+                                    document=file,
+                                    reply_to_message_id=message.id,
+                                    timeout=telegram_timeout_seconds,
+                                )
+                            except Exception:
+                                bot_stats.record_counts(download_fail=1)
+                                await safe_reply(message, download_text("send_archive_fail"))
+                                return
+
+                            bot_stats.record_counts(download_success=1)
+
+                            markup = build_inline_markup(
+                                archive_buttons,
+                                server=server_address,
+                                website=website_address,
+                                docs_path=docs_path,
+                                mod_id=mod_id,
+                            )
+                            await safe_reply(
+                                message,
+                                download_text(
+                                    "request_duration",
+                                    duration=format_seconds(round(time.time() - start_time, 1)),
+                                ),
+                                reply_markup=markup,
+                            )
+                            return
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout while requesting mods/%s/download", mod_id)
+                    logger.warning("Timeout while requesting mods/%s/download-url", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_timeout_download"), parse_mode="Markdown")
                     return -1
                 except Exception:
-                    logger.exception("Unexpected error while requesting mods/%s/download", mod_id)
+                    logger.exception("Unexpected error while requesting mods/%s/download-url", mod_id)
                     bot_stats.record_counts(download_fail=1)
                     await safe_reply(message, download_text("server_unavailable"))
                     return -1
-
-                normalized_result_type = normalize_content_type(header_result.get("content-type") if header_result else None)
-                if normalized_result_type in {"application/json", "application/problem+json"} or result.lstrip().startswith((b"{", b"[")):
-                    try:
-                        data = json.loads(result.decode("utf-8", errors="replace"))
-                    except json.JSONDecodeError:
-                        bot_stats.record_counts(download_fail=1)
-                        await reply_with_upstream_error(
-                            message,
-                            safe_reply,
-                            response=response,
-                            body=result,
-                            stage=f"mods/{mod_id}/download",
-                            reply_text=download_text("unexpected_download"),
-                        )
-                        return -1
-
-                    if isinstance(data, dict) and data.get("error_id") in [0, 1, 3]:
-                        bot_stats.record_counts(download_fail=1)
-                        log_upstream_response(f"mods/{mod_id}/download", response, result)
-                        await safe_reply(message, download_text("no_mod_json"), parse_mode="Markdown")
-                        return
-
-                    if isinstance(data, dict) and data.get("error_id") == 2:
-                        bot_stats.record_counts(download_fail=1)
-                        log_upstream_response(f"mods/{mod_id}/download", response, result)
-                        await safe_reply(message, download_text("unknown_mod_json"))
-                        return
-
-                    if isinstance(data, dict) and "error_id" in data:
-                        bot_stats.record_counts(download_fail=1)
-                        await reply_with_upstream_error(
-                            message,
-                            safe_reply,
-                            response=response,
-                            body=result,
-                            stage=f"mods/{mod_id}/download",
-                            reply_text=download_text("unexpected_download"),
-                        )
-                        return -1
-
-                bot_stats.record_counts(download_fail=1)
-                await reply_with_upstream_error(
-                    message,
-                    safe_reply,
-                    response=response,
-                    body=result,
-                    stage=f"mods/{mod_id}/download",
-                    reply_text=download_text("unexpected_download"),
-                )
-                return -1
             else:
                 bot_stats.record_counts(invalid_input=1)
                 if isinstance(link, str) and (
                     steam_workshop_url
                     or link.startswith("https://store.steampowered.com")
-                    or is_open_workshop_url(message_text, website_address)
+                    or is_open_workshop_url(message_text)
                 ):
                     await safe_reply(message, response_text("specific_mod_link"), parse_mode="Markdown")
                 elif isinstance(link, str) and (link.startswith("https://") or link.startswith("http://")):

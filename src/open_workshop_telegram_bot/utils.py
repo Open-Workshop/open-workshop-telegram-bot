@@ -19,12 +19,21 @@ def _normalize_hostname(url: str | None) -> str | None:
     return hostname
 
 
-def is_open_workshop_url(link: str | None, website_address: str | None = None) -> bool:
-    if not isinstance(link, str) or not isinstance(website_address, str):
+def is_open_workshop_url(
+    link: str | None,
+) -> bool:
+    if not isinstance(link, str):
         return False
 
     parsed = urlparse(link)
-    return parsed.scheme in {"http", "https"} and _normalize_hostname(link) == _normalize_hostname(website_address)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+
+    return (
+        parsed.path.startswith("/mod/")
+        or parsed.path.startswith("/mods/")
+        or "id" in parse_qs(parsed.query)
+    )
 
 
 def is_steam_workshop_url(link: str | None) -> bool:
@@ -45,6 +54,9 @@ def _extract_mod_id(parsed) -> str | bool:
     if parsed.path.startswith("/mod/"):
         return parsed.path.removeprefix("/mod/").split("/", 1)[0]
 
+    if parsed.path.startswith("/mods/"):
+        return parsed.path.removeprefix("/mods/").split("/", 1)[0]
+
     captured_value = parse_qs(parsed.query)
     try:
         return captured_value["id"][0]
@@ -52,7 +64,9 @@ def _extract_mod_id(parsed) -> str | bool:
         return False
 
 
-def parse_link(link: str | None, website_address: str | None = None) -> str | bool:
+def parse_link(
+    link: str | None,
+) -> str | bool:
     if not isinstance(link, str):
         return False
 
@@ -60,9 +74,9 @@ def parse_link(link: str | None, website_address: str | None = None) -> str | bo
         parsed = urlparse(link)
         link = _extract_mod_id(parsed)
 
-    elif is_open_workshop_url(link, website_address):
+    elif is_open_workshop_url(link):
         parsed = urlparse(link)
-        if parsed.path.startswith("/mod/") or "id" in parse_qs(parsed.query):
+        if parsed.path.startswith("/mod/") or parsed.path.startswith("/mods/") or "id" in parse_qs(parsed.query):
             link = _extract_mod_id(parsed)
 
     return link

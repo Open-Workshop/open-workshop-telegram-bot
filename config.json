@@ -81,7 +81,7 @@
       "large_file_buttons": [
         {
           "text": "Скачать",
-          "url": "{server}/mods/{mod_id}/download"
+          "url": "{website}/mod/{mod_id}/download"
         },
         {
           "text": "Мод на сайте",
