@@ -2,7 +2,27 @@ from __future__ import annotations
 
 import email.utils
 import math
+import re
 from urllib.parse import parse_qs, urlparse
+
+
+_FACTORIO_MOD_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_FACTORIO_RESERVED_NAMES = {
+    "changelog",
+    "dependencies",
+    "discussion",
+    "download",
+    "downloads",
+    "factorio",
+    "http",
+    "https",
+    "information",
+    "metrics",
+    "mod",
+    "mods",
+    "openworkshop",
+    "steam",
+}
 
 
 def _normalize_hostname(url: str | None) -> str | None:
@@ -29,6 +49,9 @@ def is_open_workshop_url(
     if parsed.scheme not in {"http", "https"}:
         return False
 
+    if _normalize_hostname(link) == "mods.factorio.com":
+        return False
+
     return (
         parsed.path.startswith("/mod/")
         or parsed.path.startswith("/mods/")
@@ -48,6 +71,34 @@ def is_steam_workshop_url(link: str | None) -> bool:
         parsed.path.startswith("/sharedfiles/filedetails/")
         or parsed.path.startswith("/workshop/filedetails/")
     )
+
+
+def is_factorio_workshop_url(link: str | None) -> bool:
+    if not isinstance(link, str):
+        return False
+
+    parsed = urlparse(link)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+
+    return _normalize_hostname(link) == "mods.factorio.com" and (
+        parsed.path.startswith("/mod/")
+        or parsed.path.startswith("/mods/")
+    )
+
+
+def is_factorio_source_id(link: str | None) -> bool:
+    if not isinstance(link, str):
+        return False
+
+    value = link.strip()
+    if not value or value.isdigit() or "://" in value:
+        return False
+
+    if value.lower() in _FACTORIO_RESERVED_NAMES:
+        return False
+
+    return _FACTORIO_MOD_NAME_RE.fullmatch(value) is not None
 
 
 def _extract_mod_id(parsed) -> str | bool:
@@ -73,6 +124,10 @@ def parse_link(
     if is_steam_workshop_url(link):
         parsed = urlparse(link)
         link = _extract_mod_id(parsed)
+
+    elif is_factorio_workshop_url(link):
+        parsed = urlparse(link)
+        link = _extract_factorio_mod_id(parsed)
 
     elif is_open_workshop_url(link):
         parsed = urlparse(link)
@@ -115,3 +170,34 @@ def extract_filename(header: str) -> str:
     if header.startswith("attachment; filename="):
         return header.split("attachment; filename=", 1)[-1]
     return email.utils.unquote(header.split("filename*=utf-8''", 1)[-1])
+
+
+def _extract_factorio_mod_id(parsed) -> str | bool:
+    path = parsed.path.strip("/")
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments:
+        return False
+
+    if segments[0] == "mod":
+        candidate = segments[1] if len(segments) > 1 else ""
+    elif segments[0] == "mods":
+        if len(segments) == 2:
+            candidate = segments[1]
+        elif len(segments) == 3:
+            candidate = segments[1] if segments[2] in _FACTORIO_SUBPAGES else segments[2]
+        else:
+            candidate = segments[-2] if segments[-1] in _FACTORIO_SUBPAGES else segments[-1]
+    else:
+        return False
+
+    return candidate if candidate and _FACTORIO_MOD_NAME_RE.fullmatch(candidate) else False
+
+
+_FACTORIO_SUBPAGES = {
+    "changelog",
+    "dependencies",
+    "discussion",
+    "downloads",
+    "information",
+    "metrics",
+}

@@ -21,6 +21,8 @@ from . import stats as bot_stats
 from .utils import (
     extract_filename,
     format_seconds,
+    is_factorio_source_id,
+    is_factorio_workshop_url,
     is_open_workshop_url,
     is_steam_workshop_url,
     parse_link,
@@ -419,29 +421,34 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
             start_time = time.time()
 
             steam_workshop_url = is_steam_workshop_url(message_text)
+            factorio_workshop_url = is_factorio_workshop_url(message_text)
             link = parse_link(message_text)
             if link is False:
                 bot_stats.record_counts(invalid_input=1)
-                await safe_reply(message, response_text("invalid_link"))
+                if steam_workshop_url or factorio_workshop_url or is_open_workshop_url(message_text):
+                    await safe_reply(message, response_text("specific_mod_link"), parse_mode="Markdown")
+                else:
+                    await safe_reply(message, response_text("invalid_link"))
                 return
 
-            if link.isdigit():
-                mod_id = int(link)
-                if mod_id <= 0:
-                    bot_stats.record_counts(invalid_input=1)
-                    await safe_reply(message, response_text("invalid_id"))
-                    return
+            source_lookup = None
+            if steam_workshop_url:
+                source_lookup = "steam"
+            elif factorio_workshop_url or is_factorio_source_id(link):
+                source_lookup = "factorio"
 
-                bot_stats.record_counts(download_attempt=1)
-                download_attempt_started = True
+            if source_lookup is not None or link.isdigit():
+                if source_lookup is not None:
+                    mod_id = link
+                    bot_stats.record_counts(download_attempt=1)
+                    download_attempt_started = True
 
-                if steam_workshop_url:
                     try:
                         async with aiohttp.ClientSession() as session:
                             async with session.get(
                                 url=f"{server_address}/mods",
                                 params={
-                                    "sources": ["steam"],
+                                    "sources": [source_lookup],
                                     "source_ids": [mod_id],
                                     "page_size": 1,
                                     "page": 0,
@@ -449,7 +456,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                 timeout=info_timeout_seconds,
                             ) as response:
                                 data = await response.text()
-                                stage = f"mods?sources=steam&source_ids={mod_id}"
+                                stage = f"mods?sources={source_lookup}&source_ids={mod_id}"
                                 if response.status != 200:
                                     bot_stats.record_counts(download_fail=1)
                                     await reply_with_upstream_error(
@@ -519,7 +526,7 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                                     )
                                     return -1
                     except asyncio.TimeoutError:
-                        logger.warning("Timeout while resolving steam workshop mod %s", mod_id)
+                        logger.warning("Timeout while resolving %s workshop mod %s", source_lookup, mod_id)
                         bot_stats.record_counts(download_fail=1)
                         await safe_reply(
                             message,
@@ -528,10 +535,19 @@ def register_handlers(bot: AsyncTeleBot, config: dict[str, Any]) -> None:
                         )
                         return -1
                     except Exception:
-                        logger.exception("Unexpected error while resolving steam workshop mod %s", mod_id)
+                        logger.exception("Unexpected error while resolving %s workshop mod %s", source_lookup, mod_id)
                         bot_stats.record_counts(download_fail=1)
                         await safe_reply(message, download_text("server_unavailable"))
                         return -1
+                else:
+                    mod_id = int(link)
+                    if mod_id <= 0:
+                        bot_stats.record_counts(invalid_input=1)
+                        await safe_reply(message, response_text("invalid_id"))
+                        return
+
+                    bot_stats.record_counts(download_attempt=1)
+                    download_attempt_started = True
 
                 try:
                     async with aiohttp.ClientSession() as session:
